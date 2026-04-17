@@ -5,6 +5,10 @@ on:
     paths:
       - 'manifest.json'
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   check-manifest:
     runs-on: ubuntu-latest
