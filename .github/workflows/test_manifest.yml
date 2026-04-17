@@ -12,11 +12,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Get changed files
         id: changed-files
-        uses: tj-actions/changed-files@v44
+        uses: tj-actions/changed-files@v47
 
       - name: Filter manifest files
         id: filter
@@ -31,25 +31,9 @@ jobs:
           echo "$MANIFEST_FILES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Check each manifest
-        if: steps.filter.outputs.manifest_files != ''
-        run: |
-          echo "${{ steps.filter.outputs.manifest_files }}" | while read file; do
-            echo "Checking $file"
-
-            ACTIVE=$(jq -r '.active' $file)
-            TARGET=$(jq -r '.deployTarget' $file)
-
-            if [ "$ACTIVE" = "$TARGET" ]; then
-              echo "WARNING in $file"
-
-              echo "::warning file=$file::active と deployTarget が同じです"
-            fi
-          done
-
       - name: Comment PR
         if: steps.filter.outputs.manifest_files != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const files = `${{ steps.filter.outputs.manifest_files }}`.trim().split('\n');
