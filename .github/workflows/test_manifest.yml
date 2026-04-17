@@ -2,6 +2,8 @@ name: manifest-check
 
 on:
   pull_request:
+    paths:
+      - '**/manifest.json'
 
 permissions:
   contents: read
