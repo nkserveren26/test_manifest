@@ -2,8 +2,6 @@ name: manifest-check
 
 on:
   pull_request:
-    paths:
-      - 'manifest.json'
 
 permissions:
   contents: read
@@ -16,42 +14,69 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - run: sudo apt-get install -y jq
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v44
 
-      - name: Check manifest
-        id: check
+      - name: Filter manifest files
+        id: filter
         run: |
-          ACTIVE=$(jq -r '.active' manifest.json)
-          TARGET=$(jq -r '.deployTarget' manifest.json)
+          MANIFEST_FILES=$(echo "${{ steps.changed-files.outputs.all_changed_files }}" \
+            | tr ' ' '\n' \
+            | grep 'manifest.json' || true)
 
-          echo "active=$ACTIVE" >> $GITHUB_OUTPUT
-          echo "target=$TARGET" >> $GITHUB_OUTPUT
+          echo "$MANIFEST_FILES"
 
-          if [ "$ACTIVE" = "$TARGET" ]; then
-            echo "same=true" >> $GITHUB_OUTPUT
-          else
-            echo "same=false" >> $GITHUB_OUTPUT
-          fi
+          echo "manifest_files<<EOF" >> $GITHUB_OUTPUT
+          echo "$MANIFEST_FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Check each manifest
+        if: steps.filter.outputs.manifest_files != ''
+        run: |
+          echo "${{ steps.filter.outputs.manifest_files }}" | while read file; do
+            echo "Checking $file"
+
+            ACTIVE=$(jq -r '.active' $file)
+            TARGET=$(jq -r '.deployTarget' $file)
+
+            if [ "$ACTIVE" = "$TARGET" ]; then
+              echo "WARNING in $file"
+
+              echo "::warning file=$file::active と deployTarget が同じです"
+            fi
+          done
 
       - name: Comment PR
-        if: steps.check.outputs.same == 'true'
+        if: steps.filter.outputs.manifest_files != ''
         uses: actions/github-script@v7
         with:
           script: |
-            const active = "${{ steps.check.outputs.active }}";
-            const target = "${{ steps.check.outputs.target }}";
+            const files = `${{ steps.filter.outputs.manifest_files }}`.trim().split('\n');
 
-            const body = `## ⚠️ 注意: active と deployTarget が同じです
+            let warnings = [];
 
-            通常のリリースでは異なる環境を指定します。
-            初回デプロイ、または意図した操作か確認してください。
+            for (const file of files) {
+              const fs = require('fs');
+              const content = JSON.parse(fs.readFileSync(file, 'utf8'));
 
-            active: ${active}
-            deployTarget: ${target}
-            `;
+              if (content.active === content.deployTarget) {
+                warnings.push(`- ${file} (active=${content.active}, deployTarget=${content.deployTarget})`);
+              }
+            }
 
-            github.rest.issues.createComment({
-              ...context.repo,
-              issue_number: context.issue.number,
-              body
-            });
+            if (warnings.length > 0) {
+              const body = `## ⚠️ manifest チェック結果
+
+              以下のファイルで active と deployTarget が同じです:
+
+              ${warnings.join('\n')}
+
+              意図した変更か確認してください。`;
+
+              github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
