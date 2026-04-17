@@ -1,0 +1,68 @@
+name: manifest-check
+
+on:
+  pull_request:
+    paths:
+      - '**/manifest.json'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check-manifest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v47
+
+      - name: Filter manifest files
+        id: filter
+        run: |
+          MANIFEST_FILES=$(echo "${{ steps.changed-files.outputs.all_changed_files }}" \
+            | tr ' ' '\n' \
+            | grep 'manifest.json' || true)
+
+          echo "$MANIFEST_FILES"
+
+          echo "manifest_files<<EOF" >> $GITHUB_OUTPUT
+          echo "$MANIFEST_FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Comment PR
+        if: steps.filter.outputs.manifest_files != ''
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const files = `${{ steps.filter.outputs.manifest_files }}`.trim().split('\n');
+
+            let warnings = [];
+
+            for (const file of files) {
+              const fs = require('fs');
+              const content = JSON.parse(fs.readFileSync(file, 'utf8'));
+
+              if (content.active === content.deployTarget) {
+                warnings.push(`- ${file} (active=${content.active}, deployTarget=${content.deployTarget})`);
+              }
+            }
+
+            if (warnings.length > 0) {
+              const body = `## ⚠️ manifest チェック結果
+
+              以下のファイルで active と deployTarget が同じです:
+
+              ${warnings.join('\n')}
+
+              意図した変更か確認してください。`;
+
+              github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
