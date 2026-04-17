@@ -1,0 +1,53 @@
+name: manifest-check
+
+on:
+  pull_request:
+    paths:
+      - 'manifest.json'
+
+jobs:
+  check-manifest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: sudo apt-get install -y jq
+
+      - name: Check manifest
+        id: check
+        run: |
+          ACTIVE=$(jq -r '.active' manifest.json)
+          TARGET=$(jq -r '.deployTarget' manifest.json)
+
+          echo "active=$ACTIVE" >> $GITHUB_OUTPUT
+          echo "target=$TARGET" >> $GITHUB_OUTPUT
+
+          if [ "$ACTIVE" = "$TARGET" ]; then
+            echo "same=true" >> $GITHUB_OUTPUT
+          else
+            echo "same=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment PR
+        if: steps.check.outputs.same == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const active = "${{ steps.check.outputs.active }}";
+            const target = "${{ steps.check.outputs.target }}";
+
+            const body = `⚠️ 注意: active と deployTarget が同じです
+
+            通常のリリースでは異なる環境を指定します。
+            初回デプロイ、または意図した操作か確認してください。
+
+            active: ${active}
+            deployTarget: ${target}
+            `;
+
+            github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: context.issue.number,
+              body
+            });
