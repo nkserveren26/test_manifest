@@ -41,7 +41,7 @@ jobs:
             const active = "${{ steps.check.outputs.active }}";
             const target = "${{ steps.check.outputs.target }}";
 
-            const body = `⚠️ 注意: active と deployTarget が同じです
+            const body = `## ⚠️ 注意: active と deployTarget が同じです
 
             通常のリリースでは異なる環境を指定します。
             初回デプロイ、または意図した操作か確認してください。
